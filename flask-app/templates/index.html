@@ -8,36 +8,80 @@
   </head>
   <body>
     <h1>Steganography Project</h1>
-    <form action="/submit" method="post">
+    <p id="error">{{ error }}</p>
+    <form action="/run_stego" method="post">
         <label for="image_dropdown">Choose an image: </label>
         <select name="image_dropdown" id="image_dropdown">
-            <option value="" disabled selected></option>
+            <option value="" disabled {% if not selection %}selected{% endif %}></option>
             {% for image_name in image_names %}
-                <option value="{{ image_name }}">{{ image_name }}</option>
+                <option value="{{ image_name }}" {% if selection and selection[0]==image_name %}selected{% endif %}>{{ image_name }}</option>
+            {% endfor %}
+        </select>
+        <br>
+        <label for="what_to_hide">Choose the information you would like to hide: </label>
+        <select name="info_dropdown" id="info_dropdown">
+            <option value="" disabled {% if not selection %}selected{% endif %}></option>
+            {% for info_name in info_names %}
+                <option value="{{ info_name }}" {% if selection and selection[2]==info_name %}selected{% endif %}>{{ info_name }}</option>
+            {% endfor %}
+        </select>
+        <br>
+        <label for="stego_dropdown">Choose a method: </label>
+        <select name="stego_dropdown" id="stego_dropdown">
+            <!--used copilot assistance to assign dropdown values if already passed via flask backend-->
+            <option value="" disabled {% if not selection %}selected{% endif %}></option>
+            {% for method_name in method_names %}
+                <option value="{{ method_name }}" {% if selection and selection[1]==method_name %}selected{% endif %}>{{ method_name }}</option>
             {% endfor %}
         </select>
         <button type="submit">Submit</button>
     </form>
+    <h2>Original: </h2>
     <img id="image_slot">
+    <h2>Final:</h2>
+    <img id="final" width="400">
     <script>
         const image_dropdown = document.getElementById('image_dropdown')
-        image_dropdown.addEventListener('change', function(event) {
-            const image_slot = document.getElementById("image_slot")
-            const selected_image = event.target.value
-            switch (selected_image) {
-                case "trees": 
+        const image_slot = document.getElementById('image_slot')
+        const generated_img = document.getElementById('final')
+
+        function set_images_to_selected(selected_img) {
+            switch (selected_img) {
+                case "trees":
                     image_slot.src = "/static/images/placeholder_img.png"
-                case "sky": 
+                    generated_img.src = "/static/images/stego_trees.png"
+                    break
+                case "sky":
                     image_slot.src = "/static/images/placeholder_img.png"
-                case "city": 
+                    generated_img.src = "/static/images/stego_sky.png"
+                    break
+                case "city":
                     image_slot.src = "/static/images/placeholder_img.png"
-                case "low saturation": 
+                    generated_img.src = "/static/images/stego_city.png"
+                    break
+                case "low saturation":
                     image_slot.src = "/static/images/placeholder_img.png"
-                case "high saturation": 
+                    generated_img.src = "/static/images/stego_low_sat.png"
+                    break
+                case "high saturation":
                     image_slot.src = "/static/images/placeholder_img.png"
-                default: 
+                    generated_img.src = "/static/images/stego_high_sat.png"
+                    break
+                default:
                     image_slot.src = "/static/images/placeholder_img.png"
+                    generated_img.src = "/static/images/placeholder_img.png"
+                    break
             }
+        }
+
+        let selected_image = "placeholder"
+        document.addEventListener('DOMContentLoaded', function () {
+            const initial = image_dropdown.value || selected_image
+            set_images_to_selected(initial)
+
+            image_dropdown.addEventListener('change', function (e) {
+                set_images_to_selected(e.target.value)
+            })
         })
     </script>
   </body>
