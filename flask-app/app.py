@@ -134,11 +134,11 @@ def stego_1(img, name, hashed_data):
         encoded_index += 1
 
         if curr_char == ".": 
-            r += 150
+            r += 250
         elif curr_char == "-": 
-            g += 150
+            g += 250
         elif curr_char == " ": 
-            b += 100
+            b += 250
 
         new_image.putpixel((x,y), (min(255, r), min(255, g), min(255, b)))
 
@@ -149,8 +149,47 @@ def stego_1(img, name, hashed_data):
     new_image.save(output_path)
     return 1
 
-def decrypt_stego_1(img): 
-    print("idk")
+# decrypter must know length of message, k, and scale
+def decrypt_stego_1(img, morse_len): 
+    if img.startswith("/"):
+        img_path = os.path.join(app.root_path, img.lstrip("/"))
+    else:
+        img_path = os.path.join(app.root_path, img)
+
+    stego_img = Image.open(img_path).convert('RGB')
+    width, height = stego_img.size
+
+    pixels = stego_img.load()
+
+    k = width/5
+    scale = height/2
+
+    x_spacing = width/morse_len
+    for i in range(morse_len):
+        x = int(i * x_spacing)
+        x = min(x, width-1)
+        # getting y value
+        y_func = ((x - width/2)**2) * math.sin(k * (x - width/2))
+        y_func = int(y_func / scale)
+        y = min(y_func, height)
+
+        r,g,b = pixels[x, y]
+
+        # getting what to actually do to pixels
+        # loops morse code (chatGPT suggestion)
+        # wait help how are they supposed to know which ones were changed without knowing the original image? looks like i'm going to have to change my approach
+        '''
+        curr_char = morse_code[encoded_index]
+        encoded_index += 1
+
+        if curr_char == ".": 
+            r += 250
+        elif curr_char == "-": 
+            g += 250
+        elif curr_char == " ": 
+            b += 250
+        '''
+
 
 def stego_2(img, name): 
     # used chatgpt help to fix image path loading error
