@@ -115,7 +115,12 @@ def stego_1(img, name, hashed_data):
     # copilot help to scale function to fit within image dimensions
     scale = height/2
     encoded_index = 0
-    for x in range(width):
+    # used chatGPT to space data points evenly across image x-values
+    morse_len = len(morse_code)
+    x_spacing = width/morse_len
+    for i in range(morse_len):
+        x = int(i * x_spacing)
+        x = min(x, width-1)
         # getting y value
         y_func = ((x - width/2)**2) * math.sin(k * (x - width/2))
         y_func = int(y_func / scale)
@@ -125,7 +130,7 @@ def stego_1(img, name, hashed_data):
 
         # getting what to actually do to pixels
         # loops morse code (chatGPT suggestion)
-        curr_char = morse_code[encoded_index % len(morse_code)]
+        curr_char = morse_code[encoded_index]
         encoded_index += 1
 
         if curr_char == ".": 
