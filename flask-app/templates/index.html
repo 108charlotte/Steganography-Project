@@ -39,7 +39,9 @@
     <h2>Original: </h2>
     <img id="image_slot">
     <h2>Final:</h2>
-    <img id="final" width="400">
+    {% if output_image %}
+        <img id="final" width="400" src={{output_image}}>
+    {% endif %}
     <script>
         const image_dropdown = document.getElementById('image_dropdown')
         const image_slot = document.getElementById('image_slot')

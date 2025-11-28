@@ -1,12 +1,13 @@
 from flask import Flask, render_template, request
 from PIL import Image
 import os
+import math
 
 app = Flask(__name__)
 
 image_names = ["trees", "sky", "city", "low saturation", "high saturation"]
 method_names = ["method 1", "method 2"]
-info_names = ["Hello world", "Jane Eyre", "Macbeth", "In Search of Lost Time (longest novel)"]
+info_names = ["Hello world", "Jane Eyre", "Macbeth"]
 
 @app.route("/")
 def main():
@@ -31,26 +32,69 @@ def choose_alg():
         
         if img == "placeholder":
             return render_template('index.html', error="There was an error retreiving this image", image_names=image_names, method_names=method_names, info_names=info_names) 
-
+        
         selected_info = request.form.get('info_dropdown')
-        if not selected_info in info_names: 
+        info = "placeholder"
+        match selected_info: 
+            case "Hello world": 
+                info = "/static/texts/hello_world.txt"
+            case "Jane Eyre": 
+                info = "/static/texts/jane_eyre.txt"
+            case "Macbeth": 
+                info = "/static/texts/macbeth.txt"
+        
+        if info == "placeholder":
             return render_template('index.html', error="There was an error retreiving this information", image_names=image_names, method_names=method_names, info_names=info_names) 
+
+        # using built-in python hash function
+        # used chatGPT help to fix path not found error (building correct filesystem path)
+        info_path = os.path.join(app.root_path, info.lstrip("/"))
+        file = open(info_path, "r")
+        content = file.read()
+        hashed_info = str(hash(content))
+        file.close()
 
         selected_stego = request.form.get('stego_dropdown')
         new_img = "placeholder"
         match selected_stego: 
             case "method 1": 
-                new_img = stego_1(img, selected_img)
+                new_img = stego_1(img, selected_img, hashed_info)
             case "method 2": 
                 new_img = stego_2(img, selected_img)
         
         if new_img == "placeholder": 
             return render_template('index.html', error="There was an error generating the new image", image_names=image_names, method_names=method_names, info_names=info_names)
         
-        return render_template('index.html', error="There was an error generating the new image", image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info])
-    
-# both funcs return a path to the new image they've generated
-def stego_1(img, name): 
+        return render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image=f"/static/images/stego_{selected_img}.png")
+
+# credit to this article for this approach and code: https://www.geeksforgeeks.org/python/morse-code-translator-python/
+MORSE_CODE_DICT = { 'A':'.-', 'B':'-...',
+                    'C':'-.-.', 'D':'-..', 'E':'.',
+                    'F':'..-.', 'G':'--.', 'H':'....',
+                    'I':'..', 'J':'.---', 'K':'-.-',
+                    'L':'.-..', 'M':'--', 'N':'-.',
+                    'O':'---', 'P':'.--.', 'Q':'--.-',
+                    'R':'.-.', 'S':'...', 'T':'-',
+                    'U':'..-', 'V':'...-', 'W':'.--',
+                    'X':'-..-', 'Y':'-.--', 'Z':'--..',
+                    '1':'.----', '2':'..---', '3':'...--',
+                    '4':'....-', '5':'.....', '6':'-....',
+                    '7':'--...', '8':'---..', '9':'----.',
+                    '0':'-----', ', ':'--..--', '.':'.-.-.-',
+                    '?':'..--..', '/':'-..-.', '-':'-....-',
+                    '(':'-.--.', ')':'-.--.-'}
+
+def encrypt(message): 
+    cipher = ''
+    for letter in message: 
+        if letter != ' ': 
+            cipher += MORSE_CODE_DICT[letter] + ' '
+        else: 
+            cipher += ' '
+    return cipher
+
+def stego_1(img, name, hashed_data): 
+    morse_code = encrypt(hashed_data.upper())
     # used chatgpt help to fix image path loading error
     if img.startswith("/"):
         img_path = os.path.join(app.root_path, img.lstrip("/"))
@@ -66,10 +110,32 @@ def stego_1(img, name):
     pixels = new_image.load()
 
     width, height = new_image.size
+    # function to follow for y values to mess with
+    k = width/5
+    # copilot help to scale function to fit within image dimensions
+    scale = height/2
+    encoded_index = 0
     for x in range(width):
-        for y in range(height):
-            r,g,b = pixels[x, y]
-            new_image.putpixel((x,y), (r, g, b))
+        # getting y value
+        y_func = ((x - width/2)**2) * math.sin(k * (x - width/2))
+        y_func = int(y_func / scale)
+        y = min(y_func, height)
+
+        r,g,b = pixels[x, y]
+
+        # getting what to actually do to pixels
+        # loops morse code (chatGPT suggestion)
+        curr_char = morse_code[encoded_index % len(morse_code)]
+        encoded_index += 1
+
+        if curr_char == ".": 
+            r += 150
+        elif curr_char == "-": 
+            g += 150
+        elif curr_char == " ": 
+            b += 100
+
+        new_image.putpixel((x,y), (min(255, r), min(255, g), min(255, b)))
 
     # save with a .png extension so browsers can load it
     output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
@@ -77,7 +143,10 @@ def stego_1(img, name):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     new_image.save(output_path)
     return 1
-    
+
+def decrypt_stego_1(img): 
+    print("idk")
+
 def stego_2(img, name): 
     # used chatgpt help to fix image path loading error
     if img.startswith("/"):
