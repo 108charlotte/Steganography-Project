@@ -9,7 +9,7 @@
   <body>
     <h1>Steganography Project</h1>
     <p id="error">{{ error }}</p>
-    <form action="/run_stego" method="post">
+    <form action="/run_stego" method="POST">
         <label for="image_dropdown">Choose an image: </label>
         <select name="image_dropdown" id="image_dropdown">
             <option value="" disabled {% if not selection %}selected{% endif %}></option>
@@ -34,6 +34,7 @@
                 <option value="{{ method_name }}" {% if selection and selection[1]==method_name %}selected{% endif %}>{{ method_name }}</option>
             {% endfor %}
         </select>
+        <br>
         <button type="submit">Submit</button>
     </form>
     <h2>Original: </h2>
@@ -42,6 +43,13 @@
     {% if output_image %}
         <img id="final" width="400" src={{output_image}}>
     {% endif %}
+    <form action="/decrypt_stego" method="POST" id="decrypt_form">
+        <!--used copilot help to silently pass data to backend for decryption-->
+        <input type="hidden" name="selected_image" id="decrypt_image_input" value="{% if selection %}{{ selection[0] }}{% endif %}">
+        <input type="hidden" name="selected_stego" id="decrypt_method_input" value="{% if selection %}{{ selection[1] }}{% endif %}">
+        <input type="hidden" name="selected_info" id="decrypt_info_input" value="{% if selection %}{{ selection[2] }}{% endif %}">
+        <button type="submit">Decrypt</button>
+    </form>
     <script>
         const image_dropdown = document.getElementById('image_dropdown')
         const image_slot = document.getElementById('image_slot')
@@ -84,6 +92,20 @@
             image_dropdown.addEventListener('change', function (e) {
                 set_images_to_selected(e.target.value)
             })
+            const info_dropdown = document.getElementById("info_dropdown")
+            // copilot help: keep decrypt form inputs in sync with current selections
+            const decryptImageInput = document.getElementById('decrypt_image_input')
+            const decryptMethodInput = document.getElementById('decrypt_method_input')
+            const decryptInfoInput = document.getElementById('decrypt_info_input')
+            const stegoDropdown = document.getElementById('stego_dropdown')
+            if (decryptImageInput) decryptImageInput.value = image_dropdown.value || ''
+            if (decryptMethodInput) decryptMethodInput.value = stegoDropdown ? stegoDropdown.value || '' : ''
+            if (decryptInfoInput) decryptInfoInput.value = info_dropdown.value || ''
+            if (stegoDropdown) {
+                stegoDropdown.addEventListener('change', function (e) {
+                    if (decryptMethodInput) decryptMethodInput.value = e.target.value
+                })
+            }
         })
     </script>
   </body>
