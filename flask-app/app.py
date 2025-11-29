@@ -1,7 +1,30 @@
 from flask import Flask, render_template, request
-from PIL import Image
+from PIL import Image, ExifTags
 import os
 import math
+
+# chatGPT suggestion on library to normalize characters w/ accents (like those found in jane eyre w/ charlotte bronte's name)
+import unicodedata
+
+# chatGPT function to open an image and ensure orientation remains correct
+def open_image_fixed(path):
+    img = Image.open(path)
+    try:
+        for orientation in ExifTags.TAGS.keys():
+            if ExifTags.TAGS[orientation]=='Orientation':
+                break
+        exif = img._getexif()
+        if exif is not None:
+            orientation_value = exif.get(orientation, None)
+            if orientation_value == 3:
+                img = img.rotate(180, expand=True)
+            elif orientation_value == 6:
+                img = img.rotate(270, expand=True)
+            elif orientation_value == 8:
+                img = img.rotate(90, expand=True)
+    except Exception:
+        pass
+    return img.convert('RGB')
 
 app = Flask(__name__)
 
@@ -22,7 +45,7 @@ def choose_alg():
             case "trees": 
                 img = "/static/images/placeholder_img.png"
             case "sky": 
-                img = "/static/images/placeholder_img.png"
+                img = "/static/images/sky.jpg"
             case "city": 
                 img = "/static/images/placeholder_img.png"
             case "low saturation": 
@@ -50,10 +73,14 @@ def choose_alg():
         # used chatGPT help to fix path not found error (building correct filesystem path)
         info_path = os.path.join(app.root_path, info.lstrip("/"))
         file = open(info_path, "r")
-        content = file.read().upper()
+        content = normalize_text(file.read())
         file.close()
 
         selected_stego = request.form.get('stego_dropdown')
+
+        # displays placeholder image so that user can know its loading
+        rendered_page = render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image="/static/images/placeholder_img.png")
+
         new_img = "placeholder"
         match selected_stego: 
             case "method 1": 
@@ -64,7 +91,7 @@ def choose_alg():
         if new_img == "placeholder": 
             return render_template('index.html', error="There was an error generating the new image", image_names=image_names, method_names=method_names, info_names=info_names)
         
-        return render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image=f"/static/images/stego_{selected_img}.png")
+        return rendered_page
 
 # credit to this article for this approach and code: https://www.geeksforgeeks.org/python/morse-code-translator-python/
 MORSE_CODE_DICT = { 'A':'.-', 'B':'-...',
@@ -82,7 +109,9 @@ MORSE_CODE_DICT = { 'A':'.-', 'B':'-...',
                     '0':'-----', ',':'--..--', '.':'.-.-.-',
                     '?':'..--..', '/':'-..-.', '-':'-....-',
                     '(':'-.--.', ')':'-.--.-', '!':'-.-.--', 
-                    '_':'..--.-', '=':'.-.-'}
+                    '_':'..--.-', '=':'.-.-', ';':'-.-.-.', 
+                    ':':'---...', '"':'.-..-.', '—':'-....-', # — as stylistic equivalent to - in morse code
+                    '\'':'.----.', '&':'.-...', '£':'·−·−···'} # for jane eyre}
 
 def encrypt(message): 
     cipher = ''
@@ -90,7 +119,7 @@ def encrypt(message):
         if letter != ' ' and letter != "\n": 
             cipher += MORSE_CODE_DICT[letter] + " "
         elif letter == ' ': 
-            cipher += ' '
+            cipher += '  ' # double space for actual spaces btw words
     return cipher
 
 def stego_1(img, name, hashed_data): 
@@ -102,7 +131,7 @@ def stego_1(img, name, hashed_data):
     else:
         img_path = os.path.join(app.root_path, img)
 
-    original_img = Image.open(img_path).convert('RGB')
+    original_img = open_image_fixed(img_path)
     width, height = original_img.size
     new_image = Image.new('RGB', (width, height))
 
@@ -118,14 +147,17 @@ def stego_1(img, name, hashed_data):
     encoded_index = 0
     # used chatGPT to space data points evenly across image x-values
     morse_len = len(morse_code)
+    # debug suggested by chatGPT
+    max_symbols = width
+    if morse_len > max_symbols:
+        print("morse code too long for image")
+    
     x_spacing = width/morse_len
     for i in range(morse_len):
         x = int(i * x_spacing)
         x = min(x, width-1)
-        # getting y value
-        y_func = ((x - width/2)**2) * math.sin(k * (x - width/2))
-        y_func = int(y_func / scale)
-        y = max(0, min(y_func, height - 1))
+        # getting y value, used chatGPT to generate function which will utilize more of the image than my original
+        y = int((height/2) + (height/3) * math.sin((2*math.pi * i) / morse_len * 7))
 
         r,g,b = pixels[x, y]
 
@@ -166,25 +198,37 @@ def stego_1(img, name, hashed_data):
 
 def decrypt_morse(message):
     decipher = ""
-    citext = ""
-    for letter in message: 
-        if letter != " ": 
-            citext += letter
-        else: 
-            if citext: 
+    words = message.split("  ")
+    for word in words: 
+        letters = word.split(" ")
+        for letter in letters: 
+            if letter: 
                 try: 
-                    decipher += list(MORSE_CODE_DICT.keys())[list(MORSE_CODE_DICT.values()).index(citext)]
+                    decipher += list(MORSE_CODE_DICT.keys())[list(MORSE_CODE_DICT.values()).index(letter)]
                 except ValueError:
                     # if smth weird happens
                     pass
-                citext = ''
-    return decipher
+        decipher += " "
+    return decipher.strip() # removes extra whitespace
 
 def get_morse_len(info_path): 
     file = open(info_path, "r")
-    morse_len = len(encrypt(file.read().upper()))
+    morse_len = len(encrypt(normalize_text(file.read())))
     file.close()
     return morse_len
+
+def normalize_text(text): 
+    # chatGPT suggestion for removing accents  and diacritics
+    text = unicodedata.normalize('NFD', text)
+    text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
+    # to fix key error in jane eyre, chatGPT sugggestion for characters to include
+    replacements = {
+        '\u2018': "'", '\u2019': "'", '\u201C': '"', '\u201D': '"',
+        'Æ': 'AE', 'æ': 'ae', '—': '-', '…': '...', '–': '-', '“': '"', '”': '"'
+    }
+    for k,v in replacements.items():
+        text = text.replace(k,v)
+    return text.upper()
 
 @app.route("/decrypt_stego", methods=['POST'])
 def decrypt_stego(): 
@@ -205,7 +249,7 @@ def decrypt_stego():
             img = "/static/images/stego_high_saturation.png"
     
     if img == "placeholder":
-        return render_template('index.html', error="There was an error retreiving this image", image_names=image_names, method_names=method_names, info_names=info_names) 
+        return render_template('index.html', error="There was an error retreiving this image", image_names=image_names, method_names=method_names, info_names=info_names, output_image=img) 
     
     # getting info so that morse_len can be calculated, would have had to be shared between people previously
     info = "placeholder"
@@ -218,7 +262,7 @@ def decrypt_stego():
             info = "/static/texts/macbeth.txt"
     
     if info == "placeholder":
-        return render_template('index.html', error="There was an error retreiving this information", image_names=image_names, method_names=method_names, info_names=info_names) 
+        return render_template('index.html', error="There was an error retreiving this information", image_names=image_names, method_names=method_names, info_names=info_names, output_image=img) 
 
     decrypted = ""
 
@@ -234,7 +278,7 @@ def decrypt_stego():
     with open(save_path, "w") as file: 
         file.write(decrypted)
 
-    return render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info])
+    return render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image=img)
 
 # decrypter must know length of message, k, and scale
 def decrypt_stego_1(img, morse_len): 
@@ -257,10 +301,8 @@ def decrypt_stego_1(img, morse_len):
     for i in range(morse_len):
         x = int(i * x_spacing)
         x = min(x, width-1)
-        # getting y value
-        y_func = ((x - width/2)**2) * math.sin(k * (x - width/2))
-        y_func = int(y_func / scale)
-        y = max(0, min(y_func, height - 1))
+        # getting y value, used chatGPT to generate a better formula which would utilize more of the image
+        y = int((height/2) + (height/3) * math.sin((2*math.pi * i) / morse_len * 7))
 
         r,g,b = pixels[x, y]
 
@@ -270,6 +312,7 @@ def decrypt_stego_1(img, morse_len):
             morse_code_result += "-"
         elif b % 10 == 0: 
             morse_code_result += " "
+        
     print(morse_code_result) # this is working
     decrypted = decrypt_morse(morse_code_result)
     print("decrypted: " + decrypted)
@@ -283,7 +326,7 @@ def stego_2(img, name):
     else:
         img_path = os.path.join(app.root_path, img)
 
-    original_img = Image.open(img_path).convert('RGB')
+    original_img = open_image_fixed(img_path)
     width, height = original_img.size
     new_image = Image.new('RGB', (width, height))
 
