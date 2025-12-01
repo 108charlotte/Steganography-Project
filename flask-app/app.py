@@ -147,26 +147,27 @@ def stego_1(img, name, hashed_data):
     encoded_index = 0
     # used chatGPT to space data points evenly across image x-values
     morse_len = len(morse_code)
-    # debug suggested by chatGPT
-    max_symbols = width
-    if morse_len > max_symbols:
-        print("morse code too long for image")
     
-    x_spacing = width/morse_len
-    for i in range(morse_len):
-        x = int(i * x_spacing)
-        x = min(x, width-1)
-        # getting y value, used chatGPT to generate function which will utilize more of the image than my original
-        y = int((height/2) + (height/3) * math.sin((2*math.pi * i) / morse_len * 7))
+    # chatGPT to space symbols evenly across image
+    grid_w = int(math.sqrt(morse_len)) + 1
+    grid_h = int(math.ceil(morse_len / grid_w))
 
+    x_spacing = width / grid_w
+    y_spacing = height / grid_h
+
+    for i, symbol in enumerate(morse_code):
+        row = i // grid_w
+        col = i % grid_w
+
+        x = int(col * x_spacing)
+        y = int(row * y_spacing)
+
+        # safety clamp
+        x = min(x, width - 1)
+        y = min(y, height - 1)
         r,g,b = pixels[x, y]
 
-        # getting what to actually do to pixels
-        # loops morse code (chatGPT suggestion)
-        curr_char = morse_code[encoded_index]
-        encoded_index += 1
-
-        if curr_char == ".": 
+        if symbol == ".": 
             # sets least significant bit to 0
             r = 10*int(r/10)
             # sets other lowest bits to 1 if 0
@@ -174,13 +175,13 @@ def stego_1(img, name, hashed_data):
                 g = 10*int(g/10) + 1
             if b % 10 == 0: 
                 b = 10*int(b/10) + 1
-        elif curr_char == "-": 
+        elif symbol == "-": 
             g = 10*int(g/10)
             if r % 10 == 0: 
                 r = 10*int(r/10) + 1
             if b % 10 == 0: 
                 b = 10*int(b/10) + 1
-        elif curr_char == " ": 
+        else: # space
             b = 10*int(b/10)
             if g % 10 == 0: 
                 g = 10*int(g/10) + 1
@@ -292,29 +293,35 @@ def decrypt_stego_1(img, morse_len):
 
     pixels = stego_img.load()
 
-    k = width/5
-    scale = height/2
+    # chatGPT help for even spacing
+    grid_w = int(math.sqrt(morse_len)) + 1
+    grid_h = int(math.ceil(morse_len / grid_w))
 
-    x_spacing = width/morse_len
+    x_spacing = width / grid_w
+    y_spacing = height / grid_h
 
-    morse_code_result = ""
+    result = ""
+
     for i in range(morse_len):
-        x = int(i * x_spacing)
-        x = min(x, width-1)
-        # getting y value, used chatGPT to generate a better formula which would utilize more of the image
-        y = int((height/2) + (height/3) * math.sin((2*math.pi * i) / morse_len * 7))
+        row = i // grid_w
+        col = i % grid_w
 
+        x = int(col * x_spacing)
+        y = int(row * y_spacing)
+
+        x = min(x, width - 1)
+        y = min(y, height - 1)
         r,g,b = pixels[x, y]
 
         if r % 10 == 0: 
-            morse_code_result += "."
+            result += "."
         elif g % 10 == 0: 
-            morse_code_result += "-"
+            result += "-"
         elif b % 10 == 0: 
-            morse_code_result += " "
+            result += " "
         
-    print(morse_code_result) # this is working
-    decrypted = decrypt_morse(morse_code_result)
+    print(result)
+    decrypted = decrypt_morse(result)
     print("decrypted: " + decrypted)
     return decrypted
 

@@ -17,3 +17,4 @@ Observations in development
         x = min(x, width-1)
         # getting y value, used chatGPT to generate function which will utilize more of the image than my original
         y_func = ((x - width/2)**2) * math.sin(k * (x - width/2))
+- for stego_1, I had wanted to use a function but it led to a lot of collisisona nda also ineficciency since it left a lot of space unused
