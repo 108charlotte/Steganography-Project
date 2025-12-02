@@ -1,3 +1,11 @@
 .venv/
 __pycache__/
 *.pyc
+
+#stego images
+/flask-app/static/images/stego_*.png
+/flask-app/static/images/stego_*.jpg
+/flask-app/static/images/stego_*.jpeg
+
+# stego texts
+/flask-app/static/texts/*Stego.txt
