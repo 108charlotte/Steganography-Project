@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="{{ url_for ('static', filename='styles.css') }}">
+    <!--google fonts import-->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Kedebideri:wght@400;500;600;700;800;900&family=Roboto+Condensed:ital,wght@0,100..900;1,100..900&family=Share+Tech+Mono&family=Space+Grotesk:wght@300..700&family=Titillium+Web:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700&display=swap" rel="stylesheet">
     <title>Steganography Project</title>
   </head>
   <body>
@@ -37,11 +42,18 @@
         <br>
         <button type="submit">Submit</button>
     </form>
-    <h2>Original: </h2>
-    <img id="image_slot" width="400px">
-    <h2>Final:</h2>
-    <!-- copilot to fix placeholder image not displaying for final: always include the final image element so JS can update it before/after navigation -->
-    <img id="final" width="400" src="{% if output_image %}{{ output_image }}{% else %}/static/images/placeholder_img.png{% endif %}">
+    <div id="images">
+        <div class="image">
+        <h2>Original: </h2>
+        <img id="image_slot" width="400px">
+        </div>
+        <div class="image">
+            <h2>Final:</h2>
+            <!-- copilot to fix placeholder image not displaying for final: always include the final image element so JS can update it before/after navigation -->
+            <img id="final" width="400" src="{% if output_image %}{{ output_image }}{% else %}/static/images/placeholder_img.png{% endif %}">
+        </div>
+    </div>
+
     <form action="/decrypt_stego" method="POST" id="decrypt_form">
         <!--used copilot help to silently pass data to backend for decryption-->
         <input type="hidden" name="selected_image" id="decrypt_image_input" value="{% if selection %}{{ selection[0] }}{% endif %}">

@@ -1,0 +1,14 @@
+* {
+    font-family: "Titillium Web", sans-serif; 
+    margin: 5px; 
+}
+
+form {
+    margin: 10px 0px; 
+}
+
+.image {
+    display: inline-block;
+    vertical-align: top;
+    margin-right: 20px;
+}
