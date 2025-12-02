@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request
-from PIL import Image, ExifTags
+from PIL import Image, ExifTags, ImageChops, ImageOps
 import os
 import math
 
@@ -81,7 +81,7 @@ def choose_alg():
         # displays placeholder image so that user can know its loading
         rendered_page = render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image="/static/images/placeholder_img.png")
 
-        # generate the stego image and capture the embedded/encrypted payload
+        # generate the stego image and get encrypted
         payload = None
         match selected_stego:
             case "method 1":
@@ -100,6 +100,33 @@ def choose_alg():
                 f.write(payload)
         except Exception as e:
             print("Failed to save payload:", e)
+
+        # copilot code to generate difference visualization
+        try:
+            # resolve original image filesystem path
+            if img.startswith("/"):
+                orig_path = os.path.join(app.root_path, img.lstrip("/"))
+            else:
+                orig_path = os.path.join(app.root_path, img)
+            # use a stable filename slug so frontend/backend agree
+            def slug(name: str) -> str:
+                return name.lower().replace(' ', '_')
+
+            suffix = slug(selected_img)
+            stego_path = os.path.join(app.root_path, "static", "images", f"stego_{suffix}.png")
+            if os.path.exists(orig_path) and os.path.exists(stego_path):
+                orig_img = open_image_fixed(orig_path)
+                stego_img = open_image_fixed(stego_path)
+                diff = ImageChops.difference(orig_img, stego_img)
+                diff_l = diff.convert('L')
+                # amplify small differences then autocontrast
+                diff_amplified = ImageOps.autocontrast(Image.eval(diff_l, lambda p: min(255, p * 6)))
+                # invert so background is white and changes are dark
+                diff_inverted = ImageOps.invert(diff_amplified)
+                diff_path = os.path.join(app.root_path, "static", "images", f"stego_{suffix}_diff.png")
+                diff_inverted.save(diff_path)
+        except Exception as e:
+            print("Failed to create diff image in run_stego:", e)
 
         return rendered_page
 
@@ -289,6 +316,17 @@ def stego_2(img, name, content):
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     new_image.save(output_path)
+    # create and save a visual difference map for debugging/inspection
+    try:
+        diff = ImageChops.difference(original_img.convert('RGB'), new_image)
+        diff_l = diff.convert('L')
+        diff_amplified = ImageOps.autocontrast(Image.eval(diff_l, lambda p: min(255, p * 6)))
+        diff_inverted = ImageOps.invert(diff_amplified)
+        diff_path = os.path.join(app.root_path, "static", "images", f"stego_{name}_diff.png")
+        diff_inverted.save(diff_path)
+    except Exception as e:
+        print("Failed to create diff image:", e)
+
     # copilot to display encrypted: return the base64-encrypted payload so the caller can save/display it
     return encrypted
 

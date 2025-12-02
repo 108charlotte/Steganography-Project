@@ -52,6 +52,9 @@
             <!-- copilot to fix placeholder image not displaying for final: always include the final image element so JS can update it before/after navigation -->
             <img id="final" width="400" src="{% if output_image %}{{ output_image }}{% else %}/static/images/placeholder_img.png{% endif %}">
         </div>
+        <!--copilot-generated difference map-->
+        <h3>Difference Map:</h3>
+        <img id="diff" width="400" src="/static/images/placeholder_img.png" style="display:block; margin-top:8px;">
     </div>
 
     <form action="/decrypt_stego" method="POST" id="decrypt_form">
@@ -184,6 +187,7 @@
 
             // --- Final image polling/display ---
             const finalImg = document.getElementById('final')
+            const diffImg = document.getElementById('diff')
             const decryptImageInputEl = document.getElementById('decrypt_image_input')
 
             function expectedFinalPathFor(name) {
@@ -222,6 +226,8 @@
                     const ok = await loadImage(url, 800)
                     if (ok) {
                         finalImg.src = url
+                        // once final image is available, also poll for its diff map
+                        startPollingForDiff(name)
                         stopPollingForFinal()
                         return
                     }
@@ -233,6 +239,37 @@
                 if (imagePollTimer) { clearInterval(imagePollTimer); imagePollTimer = null }
             }
 
+            // --- Diff polling/display ---
+            let diffPollTimer = null
+            function expectedDiffPathFor(name) {
+                const final = expectedFinalPathFor(name)
+                if (!final) return ''
+                return final.replace(/(\.png|\.jpg|\.jpeg)$/, '_diff.png')
+            }
+
+            function startPollingForDiff(name) {
+                if (!name) return
+                stopPollingForDiff()
+                const url = expectedDiffPathFor(name)
+                const interval = 1000
+                const maxTime = 30000
+                const start = Date.now()
+                diffPollTimer = setInterval(async () => {
+                    const ok = await loadImage(url, 800)
+                    if (ok) {
+                        diffImg.style.display = 'block'
+                        diffImg.src = url
+                        stopPollingForDiff()
+                        return
+                    }
+                    if (Date.now() - start > maxTime) stopPollingForDiff()
+                }, interval)
+            }
+
+            function stopPollingForDiff() {
+                if (diffPollTimer) { clearInterval(diffPollTimer); diffPollTimer = null }
+            }
+
             // If a selection exists on load, attempt to show the final image when it's ready
             const selectedOnLoad = decryptImageInputEl ? decryptImageInputEl.value : (image_dropdown.value || '')
             if (selectedOnLoad) {
@@ -241,9 +278,11 @@
                 if (!({% if output_image %}true{% else %}false{% endif %})) {
                     // no output_image provided by server; poll for generated image
                     startPollingForFinal(selectedOnLoad)
+                    startPollingForDiff(selectedOnLoad)
                 } else {
                     // server provided an output_image; still start polling to replace placeholder when created
                     startPollingForFinal(selectedOnLoad)
+                    startPollingForDiff(selectedOnLoad)
                 }
             }
 
@@ -253,6 +292,7 @@
                 runForm.addEventListener('submit', function () {
                     // show placeholder while server works
                     if (finalImg) finalImg.src = '/static/images/placeholder_img.png'
+                    if (diffImg) { diffImg.src = '/static/images/placeholder_img.png'; diffImg.style.display = 'none' }
                     // after submission the page will reload; the new page will poll for the final image
                 })
             }
