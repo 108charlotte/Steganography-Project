@@ -320,11 +320,18 @@ def normalize_text(text):
     # to fix key error in jane eyre, chatGPT sugggestion for characters to include
     replacements = {
         '\u2018': "'", '\u2019': "'", '\u201C': '"', '\u201D': '"',
-        'Æ': 'AE', 'æ': 'ae', '—': '-', '…': '...', '–': '-', '“': '"', '”': '"'
+        'Æ': 'AE', 'æ': 'ae', 'Ǽ': 'AE', 'ǽ': 'ae',
+        '—': '-', '…': '...', '–': '-', '“': '"', '”': '"'
     }
     for k,v in replacements.items():
         text = text.replace(k,v)
-    return text.upper()
+    
+    text = text.upper()
+
+    # remove everything not in morse code dict which hasn't been sanitized
+    allowed = set(MORSE_CODE_DICT.keys()) | set([' ', '\n'])
+    text = ''.join(c for c in text if c in allowed)
+    return text
 
 @app.route("/decrypt_stego", methods=['POST'])
 def decrypt_stego(): 
