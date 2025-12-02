@@ -209,6 +209,16 @@ def xor_encrypt_decrypt(data, key):
     
     return bytes(data)
 
+def get_encrypted_len_for_stego_2(info_path): 
+    with open(info_path, "r") as f:
+        content = normalize_text(f.read())
+    
+    data_bytes = content.encode()
+    
+    # chatGPT: Base64 length formula
+    b64_len = 4 * math.ceil(len(data_bytes) / 3)
+    return b64_len
+
 def stego_2(img, name, content): 
     # chatGPT advice for reconciling string v byte errors
     encrypted_bytes = xor_encrypt_decrypt(normalize_text(content).encode(), key.encode())
@@ -231,27 +241,7 @@ def stego_2(img, name, content):
 
     width, height = new_image.size
 
-    # used chatGPT to space data points evenly across image x-values
-    # chatGPT suggestion: include header for length of message
-    header = f"{len(encrypted):04d}"  # forces 4 digits for decryption
-    encrypted = header + encrypted
     length = len(encrypted)
-
-    curr_pos = 0
-    for i in range(4): 
-        row = i // 2
-        col = i % 2
-        r,g,b = pixels[col, row]
-        digit = ord(header[i])
-
-        if i % 3 == 0:
-            r = digit
-        elif i % 3 == 1:
-            g = digit
-        elif i % 3 == 2:
-            b = digit
-
-        new_image.putpixel((col,row), (r, g, b))
     
     # chatGPT to space symbols evenly across image
     grid_w = int(math.sqrt(length)) + 1
@@ -260,8 +250,7 @@ def stego_2(img, name, content):
     x_spacing = width / grid_w
     y_spacing = height / grid_h
 
-    # so it doesn't re-read the headers
-    for i, symbol in enumerate(encrypted[4:], start=4):
+    for i, symbol in enumerate(encrypted):
         row = i // grid_w
         col = i % grid_w
 
@@ -368,7 +357,7 @@ def decrypt_stego():
         decrypted = decrypt_stego_1(img, get_morse_len(info_fs_path))
     else: 
         info_fs_path = os.path.join(app.root_path, info.lstrip('/'))
-        decrypted = decrypt_stego_2(img)
+        decrypted = decrypt_stego_2(img, get_encrypted_len_for_stego_2(info.lstrip('/')))
     
     # chatGPT help to save file at defined location
     save_path = os.path.join(app.root_path, "static", "texts", f"{selected_info} Stego.txt")
@@ -421,7 +410,7 @@ def decrypt_stego_1(img, morse_len):
     print("decrypted: " + decrypted)
     return decrypted
 
-def decrypt_stego_2(img): 
+def decrypt_stego_2(img, msg_len): 
     if img.startswith("/"):
         img_path = os.path.join(app.root_path, img.lstrip("/"))
     else:
@@ -432,29 +421,16 @@ def decrypt_stego_2(img):
 
     pixels = stego_img.load()
 
-    # chatGPT help for even spacing and reading header
+    # chatGPT help for even spacing
 
-    # Read the 4-character header
-    raw = ""
-    for i in range(4):
-        row = i // 2
-        col = i % 2
-        r, g, b = pixels[col, row]
-        ascii_value = (r, g, b)[i % 3]
-        raw += chr(ascii_value)
-
-    print("Raw: " + repr(raw))
-    msg_len = int(raw)        # decoded length
-    morse_len = 4 + msg_len   # total characters to read
-
-    grid_w = int(math.sqrt(morse_len)) + 1
-    grid_h = int(math.ceil(morse_len / grid_w))
+    grid_w = int(math.sqrt(msg_len)) + 1
+    grid_h = int(math.ceil(msg_len / grid_w))
     x_spacing = width / grid_w
     y_spacing = height / grid_h
 
     result = ""
     
-    for i in range(4, morse_len):
+    for i in range(msg_len):
         row = i // grid_w
         col = i % grid_w
 
@@ -466,13 +442,13 @@ def decrypt_stego_2(img):
         r,g,b = pixels[x, y]
 
         if i % 3 == 0: 
-            ascii_value = r%256
+            ascii_value = r
             result += chr(ascii_value)
         elif i % 3 == 1: 
-            ascii_value = g%256
+            ascii_value = g
             result += chr(ascii_value)
         elif i % 3 == 2: 
-            ascii_value = b%256
+            ascii_value = b
             result += chr(ascii_value)
     
     print("Decrypted: " + result)
