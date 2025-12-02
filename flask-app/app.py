@@ -140,12 +140,7 @@ def stego_1(img, name, hashed_data):
     pixels = new_image.load()
 
     width, height = new_image.size
-    # function to follow for y values to mess with
-    k = width/5
-    # copilot help to scale function to fit within image dimensions
-    scale = height/2
-    encoded_index = 0
-    # used chatGPT to space data points evenly across image x-values
+    
     morse_len = len(morse_code)
     
     # chatGPT to space symbols evenly across image
@@ -216,7 +211,7 @@ def xor_encrypt_decrypt(data, key):
 
 def stego_2(img, name, content): 
     # chatGPT advice for reconciling string v byte errors
-    encrypted_bytes = xor_encrypt_decrypt(content.encode(), key.encode())
+    encrypted_bytes = xor_encrypt_decrypt(normalize_text(content).encode(), key.encode())
     encrypted = base64.b64encode(encrypted_bytes).decode()
     print("encrypted: " + encrypted)
 
@@ -238,9 +233,25 @@ def stego_2(img, name, content):
 
     # used chatGPT to space data points evenly across image x-values
     # chatGPT suggestion: include header for length of message
-    header = f"{len(encrypted):04d}"  # always 4 digits
+    header = f"{len(encrypted):04d}"  # forces 4 digits for decryption
     encrypted = header + encrypted
     length = len(encrypted)
+
+    curr_pos = 0
+    for i in range(4): 
+        row = i // 2
+        col = i % 2
+        r,g,b = pixels[col, row]
+        digit = ord(header[i])
+
+        if i % 3 == 0:
+            r = digit
+        elif i % 3 == 1:
+            g = digit
+        elif i % 3 == 2:
+            b = digit
+
+        new_image.putpixel((col,row), (r, g, b))
     
     # chatGPT to space symbols evenly across image
     grid_w = int(math.sqrt(length)) + 1
@@ -249,7 +260,8 @@ def stego_2(img, name, content):
     x_spacing = width / grid_w
     y_spacing = height / grid_h
 
-    for i, symbol in enumerate(encrypted):
+    # so it doesn't re-read the headers
+    for i, symbol in enumerate(encrypted[4:], start=4):
         row = i // grid_w
         col = i % grid_w
 
@@ -421,24 +433,17 @@ def decrypt_stego_2(img):
     pixels = stego_img.load()
 
     # chatGPT help for even spacing and reading header
-    # placeholders so we can read the header
-    grid_w = 2
-    grid_h = 2
-
-    x_spacing = width / grid_w
-    y_spacing = height / grid_h
 
     # Read the 4-character header
     raw = ""
     for i in range(4):
-        row = i // grid_w
-        col = i % grid_w
-        x = min(int(col * x_spacing), width - 1)
-        y = min(int(row * y_spacing), height - 1)
-        r, g, b = pixels[x, y]
+        row = i // 2
+        col = i % 2
+        r, g, b = pixels[col, row]
         ascii_value = (r, g, b)[i % 3]
         raw += chr(ascii_value)
 
+    print("Raw: " + repr(raw))
     msg_len = int(raw)        # decoded length
     morse_len = 4 + msg_len   # total characters to read
 
