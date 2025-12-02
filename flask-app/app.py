@@ -43,7 +43,7 @@ def choose_alg():
         img = "placeholder"
         match selected_img: 
             case "trees": 
-                img = "/static/images/placeholder_img.png"
+                img = "/static/images/trees.JPG"
             case "sky": 
                 img = "/static/images/sky.jpg"
             case "city": 
