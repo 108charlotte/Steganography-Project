@@ -40,9 +40,8 @@
     <h2>Original: </h2>
     <img id="image_slot" width="400px">
     <h2>Final:</h2>
-    {% if output_image %}
-        <img id="final" width="400" src={{output_image}}>
-    {% endif %}
+    <!-- copilot to fix placeholder image not displaying for final: always include the final image element so JS can update it before/after navigation -->
+    <img id="final" width="400" src="{% if output_image %}{{ output_image }}{% else %}/static/images/placeholder_img.png{% endif %}">
     <form action="/decrypt_stego" method="POST" id="decrypt_form">
         <!--used copilot help to silently pass data to backend for decryption-->
         <input type="hidden" name="selected_image" id="decrypt_image_input" value="{% if selection %}{{ selection[0] }}{% endif %}">
@@ -50,6 +49,8 @@
         <input type="hidden" name="selected_info" id="decrypt_info_input" value="{% if selection %}{{ selection[2] }}{% endif %}">
         <button type="submit">Decrypt</button>
     </form>
+    <h2>Encrypted/Decrypted Text:</h2>
+    <pre id="stego_text" style="white-space: pre-wrap; background:#f6f6f6; padding:10px; border:1px solid #ddd; max-height:300px; overflow:auto;"></pre>
     <script>
         const image_dropdown = document.getElementById('image_dropdown')
         const image_slot = document.getElementById('image_slot')
@@ -104,6 +105,155 @@
             if (stegoDropdown) {
                 stegoDropdown.addEventListener('change', function (e) {
                     if (decryptMethodInput) decryptMethodInput.value = e.target.value
+                })
+            }
+
+            // coplit generated: --- Stego text polling/display ---
+            const stegoTextEl = document.getElementById('stego_text')
+            // read selection from the hidden decrypt input (keeps server/template logic centralized)
+            const currentInfo = (document.getElementById('decrypt_info_input') && document.getElementById('decrypt_info_input').value) || ''
+
+            function stegoTextPath(infoName) {
+                if (!infoName) return ''
+                // file saved as '<infoName> Stego.txt' under /static/texts
+                return '/static/texts/' + encodeURIComponent(infoName + ' Stego.txt')
+            }
+
+            let pollTimer = null
+            let lastLength = -1
+            let stableCount = 0
+
+            function startPollingForInfo(infoName) {
+                if (!infoName) return
+                stopPolling()
+                lastLength = -1
+                stableCount = 0
+                const url = stegoTextPath(infoName)
+                const maxDuration = 30000 // stop after 30s
+                const interval = 1000
+                const startAt = Date.now()
+
+                pollTimer = setInterval(async () => {
+                    try {
+                        const resp = await fetch(url, { cache: 'no-store' })
+                        if (!resp.ok) {
+                            // file not yet created, show placeholder
+                            stegoTextEl.textContent = ''
+                        } else {
+                            const text = await resp.text()
+                            stegoTextEl.textContent = text
+                            if (text.length === lastLength) {
+                                stableCount += 1
+                            } else {
+                                stableCount = 0
+                                lastLength = text.length
+                            }
+                            // if unchanged for 3 polls, assume write finished and stop polling
+                            if (stableCount >= 3) {
+                                stopPolling()
+                            }
+                        }
+                    } catch (e) {
+                        // ignore network errors while file is being created
+                    }
+                    if (Date.now() - startAt > maxDuration) stopPolling()
+                }, interval)
+            }
+
+            function stopPolling() {
+                if (pollTimer) {
+                    clearInterval(pollTimer)
+                    pollTimer = null
+                }
+            }
+
+            // start polling if a selection was already present when the page was rendered
+            if (currentInfo) startPollingForInfo(currentInfo)
+
+            // --- Final image polling/display ---
+            const finalImg = document.getElementById('final')
+            const decryptImageInputEl = document.getElementById('decrypt_image_input')
+
+            function expectedFinalPathFor(name) {
+                if (!name) return ''
+                switch (name) {
+                    case 'trees': return '/static/images/stego_trees.png'
+                    case 'sky': return '/static/images/stego_sky.png'
+                    case 'city': return '/static/images/stego_city.png'
+                    case 'low saturation': return '/static/images/stego_low_saturation.png'
+                    case 'high saturation': return '/static/images/stego_high_saturation.png'
+                    default: return '/static/images/placeholder_img.png'
+                }
+            }
+
+            // try to load an image URL; resolves true on load, false on error
+            function loadImage(url, timeout = 5000) {
+                return new Promise((resolve) => {
+                    const img = new Image()
+                    let finished = false
+                    img.onload = () => { if (!finished) { finished = true; resolve(true) } }
+                    img.onerror = () => { if (!finished) { finished = true; resolve(false) } }
+                    img.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()
+                    setTimeout(() => { if (!finished) { finished = true; resolve(false) } }, timeout)
+                })
+            }
+
+            let imagePollTimer = null
+            function startPollingForFinal(name) {
+                if (!name) return
+                stopPollingForFinal()
+                const url = expectedFinalPathFor(name)
+                const interval = 1000
+                const maxTime = 30000
+                const start = Date.now()
+                imagePollTimer = setInterval(async () => {
+                    const ok = await loadImage(url, 800)
+                    if (ok) {
+                        finalImg.src = url
+                        stopPollingForFinal()
+                        return
+                    }
+                    if (Date.now() - start > maxTime) stopPollingForFinal()
+                }, interval)
+            }
+
+            function stopPollingForFinal() {
+                if (imagePollTimer) { clearInterval(imagePollTimer); imagePollTimer = null }
+            }
+
+            // If a selection exists on load, attempt to show the final image when it's ready
+            const selectedOnLoad = decryptImageInputEl ? decryptImageInputEl.value : (image_dropdown.value || '')
+            if (selectedOnLoad) {
+                // if template provided a real output_image it will already be shown; otherwise poll
+                const expected = expectedFinalPathFor(selectedOnLoad)
+                if (!({% if output_image %}true{% else %}false{% endif %})) {
+                    // no output_image provided by server; poll for generated image
+                    startPollingForFinal(selectedOnLoad)
+                } else {
+                    // server provided an output_image; still start polling to replace placeholder when created
+                    startPollingForFinal(selectedOnLoad)
+                }
+            }
+
+            // when the run form is submitted, immediately show placeholder on the final image
+            const runForm = document.querySelector('form[action="/run_stego"]')
+            if (runForm) {
+                runForm.addEventListener('submit', function () {
+                    // show placeholder while server works
+                    if (finalImg) finalImg.src = '/static/images/placeholder_img.png'
+                    // after submission the page will reload; the new page will poll for the final image
+                })
+            }
+
+            // also start polling when decrypt form is submitted
+            const decryptForm = document.getElementById('decrypt_form')
+            if (decryptForm) {
+                decryptForm.addEventListener('submit', function () {
+                    const infoName = document.getElementById('decrypt_info_input').value || ''
+                    if (infoName) {
+                        // small delay to allow server to create the file
+                        setTimeout(() => startPollingForInfo(infoName), 250)
+                    }
                 })
             }
         })

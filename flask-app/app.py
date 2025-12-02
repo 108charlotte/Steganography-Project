@@ -81,16 +81,26 @@ def choose_alg():
         # displays placeholder image so that user can know its loading
         rendered_page = render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image="/static/images/placeholder_img.png")
 
-        new_img = "placeholder"
-        match selected_stego: 
-            case "method 1": 
-                new_img = stego_1(img, selected_img, content)
-            case "method 2": 
-                new_img = stego_2(img, selected_img, content)
-        
-        if new_img == "placeholder": 
+        # generate the stego image and capture the embedded/encrypted payload
+        payload = None
+        match selected_stego:
+            case "method 1":
+                payload = stego_1(img, selected_img, content)
+            case "method 2":
+                payload = stego_2(img, selected_img, content)
+
+        if not payload:
             return render_template('index.html', error="There was an error generating the new image", image_names=image_names, method_names=method_names, info_names=info_names)
-        
+
+        # copilot: save the embedded/encrypted text so the frontend can show it before decryption
+        save_path = os.path.join(app.root_path, "static", "texts", f"{selected_info} Stego.txt")
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        try:
+            with open(save_path, "w") as f:
+                f.write(payload)
+        except Exception as e:
+            print("Failed to save payload:", e)
+
         return rendered_page
 
 # credit to this article for this approach and code: https://www.geeksforgeeks.org/python/morse-code-translator-python/
@@ -190,7 +200,8 @@ def stego_1(img, name, hashed_data):
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     new_image.save(output_path)
-    return 1
+    # copilot so encrypted can be displayed: return the morse code payload so the caller can save/display it
+    return morse_code
 
 import base64
 
@@ -278,7 +289,8 @@ def stego_2(img, name, content):
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     new_image.save(output_path)
-    return 1
+    # copilot to display encrypted: return the base64-encrypted payload so the caller can save/display it
+    return encrypted
 
 def decrypt_morse(message):
     decipher = ""
