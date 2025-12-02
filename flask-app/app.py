@@ -86,7 +86,7 @@ def choose_alg():
             case "method 1": 
                 new_img = stego_1(img, selected_img, content)
             case "method 2": 
-                new_img = stego_2(img, selected_img)
+                new_img = stego_2(img, selected_img, content)
         
         if new_img == "placeholder": 
             return render_template('index.html', error="There was an error generating the new image", image_names=image_names, method_names=method_names, info_names=info_names)
@@ -197,6 +197,88 @@ def stego_1(img, name, hashed_data):
     new_image.save(output_path)
     return 1
 
+import base64
+
+# random key for stego_2 encryption
+key = "5fC2yW8aHAi4foiM"
+
+# from https://algocademy.com/blog/how-to-implement-simple-encryption-and-decryption/
+def xor_encrypt_decrypt(data, key):
+    # Convert data and key to bytearray for byte-level operations
+    data = bytearray(data)
+    key = bytearray(key)
+    
+    # XOR each byte of data with the corresponding byte of the key
+    for i in range(len(data)):
+        data[i] ^= key[i % len(key)]
+    
+    return bytes(data)
+
+def stego_2(img, name, content): 
+    # chatGPT advice for reconciling string v byte errors
+    encrypted_bytes = xor_encrypt_decrypt(content.encode(), key.encode())
+    encrypted = base64.b64encode(encrypted_bytes).decode()
+    print("encrypted: " + encrypted)
+
+    # used chatgpt help to fix image path loading error
+    if img.startswith("/"):
+        img_path = os.path.join(app.root_path, img.lstrip("/"))
+    else:
+        img_path = os.path.join(app.root_path, img)
+
+    original_img = open_image_fixed(img_path)
+    width, height = original_img.size
+    new_image = Image.new('RGB', (width, height))
+
+    new_image.paste(original_img)
+
+    pixels = new_image.load()
+
+    width, height = new_image.size
+
+    # used chatGPT to space data points evenly across image x-values
+    # chatGPT suggestion: include header for length of message
+    header = f"{len(encrypted):04d}"  # always 4 digits
+    encrypted = header + encrypted
+    length = len(encrypted)
+    
+    # chatGPT to space symbols evenly across image
+    grid_w = int(math.sqrt(length)) + 1
+    grid_h = int(math.ceil(length / grid_w))
+
+    x_spacing = width / grid_w
+    y_spacing = height / grid_h
+
+    for i, symbol in enumerate(encrypted):
+        row = i // grid_w
+        col = i % grid_w
+
+        x = int(col * x_spacing)
+        y = int(row * y_spacing)
+
+        # safety clamp
+        x = min(x, width - 1)
+        y = min(y, height - 1)
+        r,g,b = pixels[x, y]
+
+        ascii_value = ord(symbol)
+
+        if i % 3 == 0: 
+            r = ascii_value
+        elif i % 3 == 1: 
+            g = ascii_value
+        elif i % 3 == 2: 
+            b = ascii_value
+
+        new_image.putpixel((x,y), (r, g, b))
+
+    # save with a .png extension so browsers can load it
+    output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    new_image.save(output_path)
+    return 1
+
 def decrypt_morse(message):
     decipher = ""
     words = message.split("  ")
@@ -272,6 +354,9 @@ def decrypt_stego():
         # resolve the '/static/...' info path to the filesystem before reading
         info_fs_path = os.path.join(app.root_path, info.lstrip('/'))
         decrypted = decrypt_stego_1(img, get_morse_len(info_fs_path))
+    else: 
+        info_fs_path = os.path.join(app.root_path, info.lstrip('/'))
+        decrypted = decrypt_stego_2(img)
     
     # chatGPT help to save file at defined location
     save_path = os.path.join(app.root_path, "static", "texts", f"{selected_info} Stego.txt")
@@ -281,7 +366,6 @@ def decrypt_stego():
 
     return render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image=img)
 
-# decrypter must know length of message, k, and scale
 def decrypt_stego_1(img, morse_len): 
     if img.startswith("/"):
         img_path = os.path.join(app.root_path, img.lstrip("/"))
@@ -325,34 +409,74 @@ def decrypt_stego_1(img, morse_len):
     print("decrypted: " + decrypted)
     return decrypted
 
-
-def stego_2(img, name): 
-    # used chatgpt help to fix image path loading error
+def decrypt_stego_2(img): 
     if img.startswith("/"):
         img_path = os.path.join(app.root_path, img.lstrip("/"))
     else:
         img_path = os.path.join(app.root_path, img)
 
-    original_img = open_image_fixed(img_path)
-    width, height = original_img.size
-    new_image = Image.new('RGB', (width, height))
+    stego_img = Image.open(img_path).convert('RGB')
+    width, height = stego_img.size
 
-    new_image.paste(original_img)
+    pixels = stego_img.load()
 
-    pixels = new_image.load()
+    # chatGPT help for even spacing and reading header
+    # placeholders so we can read the header
+    grid_w = 2
+    grid_h = 2
 
-    width, height = new_image.size
-    for x in range(width):
-        for y in range(height):
-            r,g,b = pixels[x, y]
-            new_image.putpixel((x,y), (r, g, b))
+    x_spacing = width / grid_w
+    y_spacing = height / grid_h
 
-    # save with a .png extension so browsers can load it
-    output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
+    # Read the 4-character header
+    raw = ""
+    for i in range(4):
+        row = i // grid_w
+        col = i % grid_w
+        x = min(int(col * x_spacing), width - 1)
+        y = min(int(row * y_spacing), height - 1)
+        r, g, b = pixels[x, y]
+        ascii_value = (r, g, b)[i % 3]
+        raw += chr(ascii_value)
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    new_image.save(output_path)
-    return 1
+    msg_len = int(raw)        # decoded length
+    morse_len = 4 + msg_len   # total characters to read
+
+    grid_w = int(math.sqrt(morse_len)) + 1
+    grid_h = int(math.ceil(morse_len / grid_w))
+    x_spacing = width / grid_w
+    y_spacing = height / grid_h
+
+    result = ""
+    
+    for i in range(4, morse_len):
+        row = i // grid_w
+        col = i % grid_w
+
+        x = int(col * x_spacing)
+        y = int(row * y_spacing)
+
+        x = min(x, width - 1)
+        y = min(y, height - 1)
+        r,g,b = pixels[x, y]
+
+        if i % 3 == 0: 
+            ascii_value = r%256
+            result += chr(ascii_value)
+        elif i % 3 == 1: 
+            ascii_value = g%256
+            result += chr(ascii_value)
+        elif i % 3 == 2: 
+            ascii_value = b%256
+            result += chr(ascii_value)
+    
+    print("Decrypted: " + result)
+    # chatGPT to fix order of decryption
+    cipher_bytes = base64.b64decode(result)
+    plaintext_bytes = xor_encrypt_decrypt(cipher_bytes, key.encode())
+    decrypted = plaintext_bytes.decode(errors="replace")
+    print("decrypted: " + decrypted)
+    return decrypted
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
