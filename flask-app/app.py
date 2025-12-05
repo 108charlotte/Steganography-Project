@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request
-from PIL import Image, ExifTags, ImageChops, ImageOps
+from PIL import Image, ExifTags, ImageChops, ImageOps, ImageFilter
 import os
 import math
 
@@ -28,7 +28,7 @@ def open_image_fixed(path):
 
 app = Flask(__name__)
 
-image_names = ["trees", "sky", "city", "low saturation", "high saturation"]
+image_names = ["trees", "sky", "city", "low saturation", "high saturation", "dark"]
 method_names = ["method 1", "method 2"]
 info_names = ["Hello world", "Jane Eyre", "Macbeth"]
 
@@ -46,11 +46,13 @@ def choose_alg():
                 img = "/static/images/trees.JPG"
             case "sky": 
                 img = "/static/images/sky.jpg"
-            case "city": 
+            case "christmas tree": 
                 img = "/static/images/placeholder_img.png"
-            case "low saturation": 
+            case "dark": 
+                img = "/static/images/dark.jpg"
+            case "": 
                 img = "/static/images/placeholder_img.png"
-            case "high saturation": 
+            case "plane with water": 
                 img = "/static/images/placeholder_img.png"
         
         if img == "placeholder":
@@ -85,14 +87,14 @@ def choose_alg():
         payload = None
         match selected_stego:
             case "method 1":
-                payload = stego_1(img, selected_img, content)
+                payload = stego_1(img, selected_img, content, selected_img)
             case "method 2":
-                payload = stego_2(img, selected_img, content)
+                payload = stego_2(img, selected_img, content, selected_img)
 
         if not payload:
             return render_template('index.html', error="There was an error generating the new image", image_names=image_names, method_names=method_names, info_names=info_names)
 
-        # copilot: save the embedded/encrypted text so the frontend can show it before decryption
+        # copilot: save the encrypted text so the frontend can show it before decryption
         save_path = os.path.join(app.root_path, "static", "texts", f"{selected_info} Stego.txt")
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         try:
@@ -100,33 +102,6 @@ def choose_alg():
                 f.write(payload)
         except Exception as e:
             print("Failed to save payload:", e)
-
-        # copilot code to generate difference visualization
-        try:
-            # resolve original image filesystem path
-            if img.startswith("/"):
-                orig_path = os.path.join(app.root_path, img.lstrip("/"))
-            else:
-                orig_path = os.path.join(app.root_path, img)
-            # use a stable filename slug so frontend/backend agree
-            def slug(name: str) -> str:
-                return name.lower().replace(' ', '_')
-
-            suffix = slug(selected_img)
-            stego_path = os.path.join(app.root_path, "static", "images", f"stego_{suffix}.png")
-            if os.path.exists(orig_path) and os.path.exists(stego_path):
-                orig_img = open_image_fixed(orig_path)
-                stego_img = open_image_fixed(stego_path)
-                diff = ImageChops.difference(orig_img, stego_img)
-                diff_l = diff.convert('L')
-                # amplify small differences then autocontrast
-                diff_amplified = ImageOps.autocontrast(Image.eval(diff_l, lambda p: min(255, p * 6)))
-                # invert so background is white and changes are dark
-                diff_inverted = ImageOps.invert(diff_amplified)
-                diff_path = os.path.join(app.root_path, "static", "images", f"stego_{suffix}_diff.png")
-                diff_inverted.save(diff_path)
-        except Exception as e:
-            print("Failed to create diff image in run_stego:", e)
 
         return rendered_page
 
@@ -159,7 +134,7 @@ def encrypt(message):
             cipher += '  ' # double space for actual spaces btw words
     return cipher
 
-def stego_1(img, name, hashed_data): 
+def stego_1(img, name, hashed_data, img_suffix): 
     morse_code = encrypt(hashed_data)
     print("stego 1 morese code: " + morse_code)
     # used chatgpt help to fix image path loading error
@@ -171,6 +146,8 @@ def stego_1(img, name, hashed_data):
     original_img = open_image_fixed(img_path)
     width, height = original_img.size
     new_image = Image.new('RGB', (width, height))
+
+    diff_map = Image.new('RGB', (width, height))
 
     new_image.paste(original_img)
 
@@ -199,34 +176,55 @@ def stego_1(img, name, hashed_data):
         y = min(y, height - 1)
         r,g,b = pixels[x, y]
 
+        # for diff map, calculated for each pixel
+        amt_changed = 0
+
         if symbol == ".": 
             # sets least significant bit to 0
+            lsb_r = r % 10
+            amt_changed += lsb_r
             r = 10*int(r/10)
             # sets other lowest bits to 1 if 0
             if g % 10 == 0: 
+                amt_changed += 1
                 g = 10*int(g/10) + 1
             if b % 10 == 0: 
+                amt_changed += 1
                 b = 10*int(b/10) + 1
         elif symbol == "-": 
+            lsb_g = g % 10
+            amt_changed += lsb_g
             g = 10*int(g/10)
             if r % 10 == 0: 
+                amt_changed += 1
                 r = 10*int(r/10) + 1
             if b % 10 == 0: 
+                amt_changed += 1
                 b = 10*int(b/10) + 1
         else: # space
+            lsb_b = b % 10
+            amt_changed += lsb_b
             b = 10*int(b/10)
             if g % 10 == 0: 
+                amt_changed += 1
                 g = 10*int(g/10) + 1
             if r % 10 == 0: 
+                amt_changed += 1
                 r = 10*int(r/10) + 1
 
         new_image.putpixel((x,y), (r, g, b))
 
+        diff_map.putpixel((x,y),(amt_changed, amt_changed, amt_changed))
+
     # save with a .png extension so browsers can load it
     output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
-
+    
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     new_image.save(output_path)
+
+    # save difference map
+    diff_path = os.path.join(app.root_path, "static", "images", f"stego_{img_suffix}_diff.png")
+    diff_map.save(diff_path)
     # copilot so encrypted can be displayed: return the morse code payload so the caller can save/display it
     return morse_code
 
@@ -257,7 +255,7 @@ def get_encrypted_len_for_stego_2(info_path):
     b64_len = 4 * math.ceil(len(data_bytes) / 3)
     return b64_len
 
-def stego_2(img, name, content): 
+def stego_2(img, name, content, img_suffix): 
     # chatGPT advice for reconciling string v byte errors
     encrypted_bytes = xor_encrypt_decrypt(normalize_text(content).encode(), key.encode())
     encrypted = base64.b64encode(encrypted_bytes).decode()
@@ -272,6 +270,7 @@ def stego_2(img, name, content):
     original_img = open_image_fixed(img_path)
     width, height = original_img.size
     new_image = Image.new('RGB', (width, height))
+    diff_map = Image.new('RGB', (width, height))
 
     new_image.paste(original_img)
 
@@ -289,6 +288,9 @@ def stego_2(img, name, content):
     y_spacing = height / grid_h
 
     for i, symbol in enumerate(encrypted):
+        # for diff map
+        amt_changed = 0
+
         row = i // grid_w
         col = i % grid_w
 
@@ -303,29 +305,26 @@ def stego_2(img, name, content):
         ascii_value = ord(symbol)
 
         if i % 3 == 0: 
+            amt_changed = abs(r-ascii_value)
             r = ascii_value
         elif i % 3 == 1: 
+            amt_changed = abs(g-ascii_value)
             g = ascii_value
         elif i % 3 == 2: 
+            amt_changed = abs(b-ascii_value)
             b = ascii_value
 
         new_image.putpixel((x,y), (r, g, b))
+        diff_map.putpixel((x,y), (amt_changed, amt_changed, amt_changed))
 
     # save with a .png extension so browsers can load it
     output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     new_image.save(output_path)
-    # create and save a visual difference map for debugging/inspection
-    try:
-        diff = ImageChops.difference(original_img.convert('RGB'), new_image)
-        diff_l = diff.convert('L')
-        diff_amplified = ImageOps.autocontrast(Image.eval(diff_l, lambda p: min(255, p * 6)))
-        diff_inverted = ImageOps.invert(diff_amplified)
-        diff_path = os.path.join(app.root_path, "static", "images", f"stego_{name}_diff.png")
-        diff_inverted.save(diff_path)
-    except Exception as e:
-        print("Failed to create diff image:", e)
+    
+    diff_path = os.path.join(app.root_path, "static", "images", f"stego_{img_suffix}_diff.png")
+    diff_map.save(diff_path)
 
     # copilot to display encrypted: return the base64-encrypted payload so the caller can save/display it
     return encrypted
@@ -382,8 +381,8 @@ def decrypt_stego():
             img = "/static/images/stego_trees.png"
         case "sky": 
             img = "/static/images/stego_sky.png"
-        case "city": 
-            img = "/static/images/stego_city.png"
+        case "dark": 
+            img = "/static/images/dark.jpg"
         case "low saturation": 
             img = "/static/images/stego_low_saturation.png"
         case "high saturation": 

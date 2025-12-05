@@ -1,0 +1,5 @@
+- [ ] Incorporate headers into stego project so that the extra info the person has to know isn’t message-specific
+- [ ] Generate difference map while generating stego image rather than separately
+- [ ] Write stego_3 which just repeats the message throughout the image rather than grid spacing
+- [ ] Deploy on pythonanywhere
+- [ ] Make final presentation

@@ -19,3 +19,5 @@ Observations in development
         y_func = ((x - width/2)**2) * math.sin(k * (x - width/2))
 - for stego_1, I had wanted to use a function but it led to a lot of collisisona nda also ineficciency since it left a lot of space unused
 - stego_1 works with a large image taken from my phone but when I use a placeholder image from online it breaks
+
+(planning on deploying on pythonanywhere)

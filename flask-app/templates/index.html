@@ -81,17 +81,21 @@
                     image_slot.src = "/static/images/sky.jpg"
                     generated_img.src = "/static/images/stego_sky.png"
                     break
+                case "dark":
+                    image_slot.src = "/static/images/dark.jpg"
+                    generated_img.src = "/static/images/stego_dark.png"
+                    break
                 case "city":
                     image_slot.src = "/static/images/placeholder_img.png"
                     generated_img.src = "/static/images/stego_city.png"
                     break
                 case "low saturation":
                     image_slot.src = "/static/images/placeholder_img.png"
-                    generated_img.src = "/static/images/stego_low_sat.png"
+                    generated_img.src = "/static/images/stego_low_saturation.png"
                     break
                 case "high saturation":
                     image_slot.src = "/static/images/placeholder_img.png"
-                    generated_img.src = "/static/images/stego_high_sat.png"
+                    generated_img.src = "/static/images/stego_high_saturation.png"
                     break
                 default:
                     image_slot.src = "/static/images/placeholder_img.png"
@@ -196,6 +200,7 @@
                     case 'trees': return '/static/images/stego_trees.png'
                     case 'sky': return '/static/images/stego_sky.png'
                     case 'city': return '/static/images/stego_city.png'
+                    case 'dark': return '/static/images/stego_dark.png'
                     case 'low saturation': return '/static/images/stego_low_saturation.png'
                     case 'high saturation': return '/static/images/stego_high_saturation.png'
                     default: return '/static/images/placeholder_img.png'
