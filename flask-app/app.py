@@ -147,7 +147,7 @@ def stego_1(img, name, hashed_data, img_suffix):
     width, height = original_img.size
     new_image = Image.new('RGB', (width, height))
 
-    diff_map = Image.new('RGB', (width, height))
+    diff_map = Image.new('RGB', (width, height), (255, 255, 255))
 
     new_image.paste(original_img)
 
@@ -214,7 +214,8 @@ def stego_1(img, name, hashed_data, img_suffix):
 
         new_image.putpixel((x,y), (r, g, b))
 
-        diff_map.putpixel((x,y),(amt_changed, amt_changed, amt_changed))
+        scaled_amt = min(255, amt_changed * 50)
+        diff_map.putpixel((x,y), (scaled_amt, scaled_amt, scaled_amt))
 
     # save with a .png extension so browsers can load it
     output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
@@ -270,7 +271,7 @@ def stego_2(img, name, content, img_suffix):
     original_img = open_image_fixed(img_path)
     width, height = original_img.size
     new_image = Image.new('RGB', (width, height))
-    diff_map = Image.new('RGB', (width, height))
+    diff_map = Image.new('RGB', (width, height), (255, 255, 255))
 
     new_image.paste(original_img)
 
@@ -315,7 +316,7 @@ def stego_2(img, name, content, img_suffix):
             b = ascii_value
 
         new_image.putpixel((x,y), (r, g, b))
-        diff_map.putpixel((x,y), (amt_changed, amt_changed, amt_changed))
+        diff_map.putpixel((x,y), (min(255, amt_changed), min(255, amt_changed), min(255, amt_changed)))
 
     # save with a .png extension so browsers can load it
     output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
