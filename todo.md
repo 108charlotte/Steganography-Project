@@ -3,4 +3,4 @@
 - [ ] Write stego_3 which just repeats the message throughout the image rather than grid spacing
 - [ ] Deploy on pythonanywhere
 - [ ] Make final presentation
-- [X] fix decrypted returning nothing with headers
+- [X] Fix decrypted returning nothing with headers
