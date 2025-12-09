@@ -1,6 +1,6 @@
-- [ ] Incorporate headers so that the extra info the person has to know isn’t message-specific
+- [X] Incorporate headers so that the extra info the person has to know isn’t message-specific
 - [X] Generate difference map while generating stego image rather than separately
 - [ ] Write stego_3 which just repeats the message throughout the image rather than grid spacing
 - [ ] Deploy on pythonanywhere
 - [ ] Make final presentation
-- [ ] fix decrypted returning nothing with headers
+- [X] fix decrypted returning nothing with headers
