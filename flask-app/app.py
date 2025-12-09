@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request
-from PIL import Image, ExifTags, ImageChops, ImageOps, ImageFilter
+from PIL import Image, ExifTags, ImageChops, ImageOps, ImageFilter, ImageCms
 import os
 import math
 
@@ -7,24 +7,29 @@ import math
 import unicodedata
 
 # chatGPT function to open an image and ensure orientation remains correct
+from PIL import Image, ImageCms
 def open_image_fixed(path):
     img = Image.open(path)
+    # Fix orientation from EXIF
     try:
-        for orientation in ExifTags.TAGS.keys():
-            if ExifTags.TAGS[orientation]=='Orientation':
-                break
         exif = img._getexif()
-        if exif is not None:
-            orientation_value = exif.get(orientation, None)
-            if orientation_value == 3:
+        if exif and 274 in exif:
+            orientation = exif[274]
+            if orientation == 3:
                 img = img.rotate(180, expand=True)
-            elif orientation_value == 6:
+            elif orientation == 6:
                 img = img.rotate(270, expand=True)
-            elif orientation_value == 8:
+            elif orientation == 8:
                 img = img.rotate(90, expand=True)
     except Exception:
         pass
-    return img.convert('RGB')
+
+    # Only convert to RGB if needed
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    return img
+
 
 app = Flask(__name__)
 
@@ -81,7 +86,6 @@ def choose_alg():
         selected_stego = request.form.get('stego_dropdown')
 
         # displays placeholder image so that user can know its loading
-        rendered_page = render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image="/static/images/placeholder_img.png")
 
         # generate the stego image and get encrypted
         payload = None
@@ -103,6 +107,7 @@ def choose_alg():
         except Exception as e:
             print("Failed to save payload:", e)
 
+        rendered_page = render_template('index.html', image_names=image_names, method_names=method_names, info_names=info_names, selection=[selected_img, selected_stego, selected_info], output_image="/static/images/placeholder_img.png")
         return rendered_page
 
 # credit to this article for this approach and code: https://www.geeksforgeeks.org/python/morse-code-translator-python/
@@ -134,44 +139,73 @@ def encrypt(message):
             cipher += '  ' # double space for actual spaces btw words
     return cipher
 
-def stego_1(img, name, hashed_data, img_suffix): 
-    morse_code = encrypt(hashed_data)
-    print("stego 1 morese code: " + morse_code)
+'''takes in the path of the image (so it can be found, the name (for 
+setting filenames), the data (to-be-encrypted), and the img_suffix
+(also for file saving)'''
+def stego_1(img, name, data, img_suffix): 
+    morse_code = encrypt(data)
+    print("stego 1 morse code: " + morse_code)
     # used chatgpt help to fix image path loading error
     if img.startswith("/"):
         img_path = os.path.join(app.root_path, img.lstrip("/"))
     else:
         img_path = os.path.join(app.root_path, img)
 
+    '''opens original image + creates a new image and diff image, both
+    w/ same dimensions as original. copies original image into new image, 
+    sets diff image background to white'''
     original_img = open_image_fixed(img_path)
+    # added this extra color profile thanks to copilot suggestion to fix desaturation
+    icc_profile = original_img.info.get("icc_profile")
     width, height = original_img.size
-    new_image = Image.new('RGB', (width, height))
-
+    new_image = original_img.copy()
     diff_map = Image.new('RGB', (width, height), (255, 255, 255))
 
-    new_image.paste(original_img)
-
     pixels = new_image.load()
-
     width, height = new_image.size
-    
+
+    '''gets the length of the information to-be-stored in the image, 
+    creates a string of that length with 0 padding if necessary to 
+    make it 8 chars'''
     morse_len = len(morse_code)
+    str_morse_len = str(morse_len).zfill(8)
+
+    '''creates a header where the lsb of the r channel is set to 
+    the digit at that place for the 8 digits of the header in the 
+    new image'''
+    # insert header as the first 8 chars, setting the lsb of the r to the number in that place
+    for i in range(8): 
+        # store header in top-left corner: row i, column 0
+        r, g, b = pixels[i, 0]
+        num = str_morse_len[i] if i < len(str_morse_len) else "0"
+        r = 10*int(r/10) + int(num)
+        new_image.putpixel((i, 0), (r, g, b))
     
-    # chatGPT to space symbols evenly across image
+    '''setting up grid spacing so that changed pixels are
+    distributed evenly throughout length and width of image'''
+    # chatGPT to create grid spacing across image
     grid_w = int(math.sqrt(morse_len)) + 1
     grid_h = int(math.ceil(morse_len / grid_w))
 
     x_spacing = width / grid_w
     y_spacing = height / grid_h
 
+    '''leaves space for the header at the beginning'''
+    offset = 8
+
+    '''passes through each character index in morse code message'''
     for i, symbol in enumerate(morse_code):
-        row = i // grid_w
-        col = i % grid_w
+        '''spacing evenly using variables defined previously'''
+        # so that I can have the header and not have it get overriden
+        pixel_index = i + offset
+
+        row = pixel_index // grid_w
+        col = pixel_index % grid_w
 
         x = int(col * x_spacing)
         y = int(row * y_spacing)
 
-        # safety clamp
+        # safety clamp, ensures everything stays inside image
         x = min(x, width - 1)
         y = min(y, height - 1)
         r,g,b = pixels[x, y]
@@ -179,55 +213,50 @@ def stego_1(img, name, hashed_data, img_suffix):
         # for diff map, calculated for each pixel
         amt_changed = 0
 
+        # set one channel LSB to 0 for the symbol, others to 1
+        orig = (r, g, b)
         if symbol == ".": 
-            # sets least significant bit to 0
-            lsb_r = r % 10
-            amt_changed += lsb_r
-            r = 10*int(r/10)
-            # sets other lowest bits to 1 if 0
-            if g % 10 == 0: 
-                amt_changed += 1
-                g = 10*int(g/10) + 1
-            if b % 10 == 0: 
-                amt_changed += 1
-                b = 10*int(b/10) + 1
+            r = (r & ~1)
+            g = (g | 1)
+            b = (b | 1)
         elif symbol == "-": 
-            lsb_g = g % 10
-            amt_changed += lsb_g
-            g = 10*int(g/10)
-            if r % 10 == 0: 
-                amt_changed += 1
-                r = 10*int(r/10) + 1
-            if b % 10 == 0: 
-                amt_changed += 1
-                b = 10*int(b/10) + 1
+            r = (r | 1)
+            g = (g & ~1)
+            b = (b | 1)
         else: # space
-            lsb_b = b % 10
-            amt_changed += lsb_b
-            b = 10*int(b/10)
-            if g % 10 == 0: 
-                amt_changed += 1
-                g = 10*int(g/10) + 1
-            if r % 10 == 0: 
-                amt_changed += 1
-                r = 10*int(r/10) + 1
+            r = (r | 1)
+            g = (g | 1)
+            b = (b & ~1)
 
-        new_image.putpixel((x,y), (r, g, b))
+        amt_changed = abs(r - orig[0]) + abs(g - orig[1]) + abs(b - orig[2])
 
-        scaled_amt = min(255, amt_changed * 50)
-        diff_map.putpixel((x,y), (scaled_amt, scaled_amt, scaled_amt))
+        '''sets pixel of new image to correct color and pixel 
+        at same location of diff image to 255-amt_changed (darker
+        the more different it is)'''
+        # new_image.putpixel((x,y), (r, g, b))
+        # magnify small LSB changes for visibility
+        magnified = min(255, amt_changed * 85)
+        diff_map.putpixel((x,y), (255-magnified, 255-magnified, 255-magnified))
 
     # save with a .png extension so browsers can load it
     output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
-    
+
+    # delete old stego image if it exists
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     new_image.save(output_path)
 
     # save difference map
     diff_path = os.path.join(app.root_path, "static", "images", f"stego_{img_suffix}_diff.png")
+    # delete old diff map if it exists
+    if os.path.exists(diff_path):
+        os.remove(diff_path)
     diff_map.save(diff_path)
     # copilot so encrypted can be displayed: return the morse code payload so the caller can save/display it
     return morse_code
+
 
 import base64
 
@@ -315,16 +344,23 @@ def stego_2(img, name, content, img_suffix):
             amt_changed = abs(b-ascii_value)
             b = ascii_value
 
-        new_image.putpixel((x,y), (r, g, b))
+        # new_image.putpixel((x,y), (r, g, b))
         diff_map.putpixel((x,y), (min(255, amt_changed), min(255, amt_changed), min(255, amt_changed)))
 
     # save with a .png extension so browsers can load it
     output_path = os.path.join(app.root_path, "static", "images", f"stego_{name}.png")
 
+    # delete old stego image if it exists
+    if os.path.exists(output_path):
+        os.remove(output_path)
+    
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     new_image.save(output_path)
     
     diff_path = os.path.join(app.root_path, "static", "images", f"stego_{img_suffix}_diff.png")
+    # delete old diff map if it exists
+    if os.path.exists(diff_path):
+        os.remove(diff_path)
     diff_map.save(diff_path)
 
     # copilot to display encrypted: return the base64-encrypted payload so the caller can save/display it
@@ -383,7 +419,7 @@ def decrypt_stego():
         case "sky": 
             img = "/static/images/stego_sky.png"
         case "dark": 
-            img = "/static/images/dark.jpg"
+            img = "/static/images/stego_dark.png"
         case "low saturation": 
             img = "/static/images/stego_low_saturation.png"
         case "high saturation": 
@@ -435,6 +471,17 @@ def decrypt_stego_1(img, morse_len):
 
     pixels = stego_img.load()
 
+    # read morse_len
+    total_header = ""
+    for i in range(8): 
+        # read header from top-left corner: row i, column 0
+        r, g, b = pixels[i, 0]
+        num = str(r % 10)
+        total_header += num
+    total_header = int(total_header)
+
+    morse_len = total_header
+    
     # chatGPT help for even spacing
     grid_w = int(math.sqrt(morse_len)) + 1
     grid_h = int(math.ceil(morse_len / grid_w))
@@ -445,8 +492,9 @@ def decrypt_stego_1(img, morse_len):
     result = ""
 
     for i in range(morse_len):
-        row = i // grid_w
-        col = i % grid_w
+        pixel_index = i + 8
+        row = pixel_index // grid_w
+        col = pixel_index % grid_w
 
         x = int(col * x_spacing)
         y = int(row * y_spacing)
@@ -455,11 +503,11 @@ def decrypt_stego_1(img, morse_len):
         y = min(y, height - 1)
         r,g,b = pixels[x, y]
 
-        if r % 10 == 0: 
+        if (r & 1) == 0 and (g & 1) == 1 and (b & 1) == 1: 
             result += "."
-        elif g % 10 == 0: 
+        elif (g & 1) == 0 and (r & 1) == 1 and (b & 1) == 1: 
             result += "-"
-        elif b % 10 == 0: 
+        elif (b & 1) == 0 and (r & 1) == 1 and (g & 1) == 1: 
             result += " "
         
     print(result)
