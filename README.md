@@ -1,5 +1,5 @@
 # Steganography-Project
-My final project for my data structures and algorithms semester-long elective. This is just a preliminary readme, I'll update it more later! 
+My final project for my data structures and algorithms semester-long elective. 
 
 ## Project Description
 Develop 2+ algorithms for hiding information in images and/or audio files. For my project, I chose to create 2 steganography algorithms to hide textual information in images. My code is heavily commented in the areas which alter the pixels of the original image to create a new one, so please check those out and my final presentation if you want descriptions of each algorithm and how they work. The images available on the website are taken from my iPhone! It also generates a difference map from each original --> new image. 
@@ -9,6 +9,7 @@ Originally, I had planned to distribute my message across the image using a sinu
 
 ## Tools
 This project permitted the use of generative AI tools for code generation, so long as the final presentation and analyses were our own work. My final presentation can be found here: [Stego Final Presentation](https://docs.google.com/presentation/d/1-Rx_rbjpMvD-OFHWwh2PjQiTHubhFUvbNpUu3T6BHK4/edit?usp=sharing), which includes analyses of my two algorithms. However, it notably doesn't include any description of the Flask and Javascript components, since those were outside the scope of the course. 
+
 For generating code, I used: 
 - github copilot
 - chatGPT
